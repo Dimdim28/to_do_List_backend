@@ -1,5 +1,6 @@
 const { validationResult, query } = require("express-validator");
 const Task = require("../models/Task");
+const User = require("../models/User");
 
 const createTask = async (req, res) => {
   try {
@@ -31,7 +32,13 @@ const createTask = async (req, res) => {
 };
 
 const getAllTasks = async (req, res) => {
-  const { page = 1, limit = 10, deadline = "all", ...params } = req.query;
+  const {
+    page = 1,
+    limit = 10,
+    deadline = "all",
+    categories = [],
+    ...params
+  } = req.query;
 
   try {
     const date = new Date();
@@ -43,60 +50,52 @@ const getAllTasks = async (req, res) => {
     const day = date.getDate();
     const todayMidnight = new Date(`${year}-${month}-${day}`);
 
-    let queryParams;
+    let queryParams = {
+      user: req.userId,
+      ...params,
+    };
+
+    if (categories.length === 1) {
+      queryParams.categories = {
+        $elemMatch: {
+          _id: categories[0]._id,
+        },
+      };
+    } else if (categories.length > 1) {
+      const queryArr = [];
+      categories.forEach((elem) =>
+        queryArr.push({ categories: { $elemMatch: { _id: elem._id } } })
+      );
+      queryParams.$and = queryArr;
+    }
 
     if (deadline === "all") {
-      queryParams = {
-        user: req.userId,
-        ...params,
-      };
+      queryParams = queryParams;
     } else if (deadline === "day") {
-      queryParams = {
-        user: req.userId,
-        deadline: todayMidnight,
-        ...params,
-      };
+      queryParams.deadline = todayMidnight;
     } else if (deadline == "week") {
       const today = new Date(`${year}-${month}-${day}`);
-      queryParams = {
-        user: req.userId,
-        deadline: {
-          $gte: todayMidnight,
-          $lte: new Date(today.setDate(today.getDate() + 7)),
-        },
-        ...params,
+      queryParams.deadline = {
+        $gte: todayMidnight,
+        $lte: new Date(today.setDate(today.getDate() + 7)),
       };
     } else if (deadline === "month") {
       const today = new Date(`${year}-${month}-${day}`);
-      queryParams = {
-        user: req.userId,
-        deadline: {
-          $gte: todayMidnight,
-          $lte: new Date(today.setMonth(today.getMonth() + 1)),
-        },
-        ...params,
+      queryParams.deadline = {
+        $gte: todayMidnight,
+        $lte: new Date(today.setMonth(today.getMonth() + 1)),
       };
     } else if (deadline === "year") {
-      queryParams = {
-        user: req.userId,
-        deadline: {
-          $gte: todayMidnight,
-          $lte: new Date(`${year + 1}-${month}-${day}`),
-        },
-        ...params,
+      queryParams.deadline = {
+        $gte: todayMidnight,
+        $lte: new Date(`${year + 1}-${month}-${day}`),
       };
     } else if (deadline === "outdated") {
-      queryParams = {
-        user: req.userId,
-        deadline: {
-          $lt: todayMidnight,
-        },
+      queryParams.deadline = {
+        $lt: todayMidnight,
       };
     } else {
-      return res.status(404).json({
-        message: "Tasks page not found",
-        totalPages,
-      });
+      return res.status(404).json({ message: "Tasks page not found" });
     }
 
     const count = await Task.countDocuments(queryParams);
@@ -230,17 +229,58 @@ const shareTask = async (req, res) => {
         .json({ message: "Incorrect data", errors: errors.array() });
     }
 
+    const shareToUser = await User.findOne({
+      _id: req.body.shareTo,
+    });
+
+    if (!shareToUser)
+      return res
+        .status(404)
+        .json({ message: "Could not find the user to share the task with" });
+
+    const shareFromUser = await User.findOne({
+      _id: req.userId,
+    });
+
+    if (!shareFromUser)
+      return res
+        .status(404)
+        .json({ message: "Could not find the user to share the task from" });
+
     const foundTask = await Task.findOneAndUpdate(
-      { _id: req.params.id },
       {
-        sharedWith: req.body.sharedWith,
+        user: req.userId,
+        _id: req.params.id,
       },
+      {
+        $push: {
+          sharedWith: {
+            userId: shareToUser._id,
+            username: shareToUser.username,
+          },
+        },
+      }
     );
 
     if (!foundTask)
       return res.status(404).json({ message: "Could not find the task" });
 
-    res.json(foundTask);
+    const doc = new Task({
+      title: `${foundTask.title} (shared from ${shareFromUser.username})`,
+      description: foundTask.description,
+      sharedWith: "already shared",
+      isCompleted: false,
+      deadline: foundTask.deadline,
+      dateOfCompletion: null,
+      user: req.body.shareTo,
+    });
+
+    const copiedTask = await doc.save();
+
+    if (!copiedTask)
+      return res.status(400).json({ message: "Could not create copied task" });
+
+    res.json(copiedTask);
   } catch (err) {
     console.log(err);
     res.status(500).json({
