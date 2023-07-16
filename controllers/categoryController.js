@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const { validationResult } = require("express-validator");
 const Category = require("../models/Category");
 const Task = require("../models/Task");
@@ -25,7 +26,7 @@ const getCategories = async (req, res) => {
 
   try {
     const count = await Category.countDocuments({
-      user: req.userId,
+      user: req.user._id.toString(),
       ...params,
     });
     if (count === 0)
@@ -42,7 +43,7 @@ const getCategories = async (req, res) => {
         totalPages,
       });
 
-    const categories = await Category.find({ user: req.userId, ...params })
+    const categories = await Category.find({ user: req.user._id.toString(), ...params })
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .exec();
@@ -69,7 +70,7 @@ const createCategory = async (req, res) => {
         .json({ message: "Incorrect data", errors: errors.array() });
     }
 
-    const foundCategory = await Category.findOne({ user: req.userId, title: req.body.title });
+    const foundCategory = await Category.findOne({ user: req.user._id.toString(), title: req.body.title });
     if (foundCategory) {
       console.log(foundCategory);
       return res.status(400).json({ message: "Title already in use" });
@@ -78,7 +79,7 @@ const createCategory = async (req, res) => {
     const doc = new Category({
       title: req.body.title,
       color: req.body.color,
-      user: req.userId,
+      user: req.user._id.toString(),
     });
 
     const category = await doc.save();
@@ -94,7 +95,6 @@ const createCategory = async (req, res) => {
 
 const updateCategory = async (req, res) => {
   try {
-    if (!req.params.id) return res.status(400).json({ message: "Id required" });
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res
@@ -110,41 +110,41 @@ const updateCategory = async (req, res) => {
       }
     );
 
-    if (!category)
-      return res.status(404).json({ message: "Could not find category" });
+    // if (!category)
+    //   return res.status(404).json({ message: "Could not find category" });
 
-    const categoryId = category._id.toString();
-    const foundTasks = await Task.find({
-      categories: { $elemMatch: { _id: categoryId } },
-    });
+    // const categoryId = category._id.toString();
+    // const foundTasks = await Task.find({
+    //   categories: { $elemMatch: { _id: categoryId } },
+    // });
 
-    const tasksToUpdate = [];
+    // const tasksToUpdate = [];
 
-    foundTasks.forEach((task) => {
-      tasksToUpdate.push({
-        taskId: task._id,
-        categories: task.categories.map((elem) => {
-          if (elem._id === categoryId) {
-            return {
-              _id: categoryId,
-              title: req.body.title ? req.body.title : category.title,
-              color: req.body.color ? req.body.color : category.color,
-            };
-          } else {
-            return elem;
-          }
-        }),
-      });
-    });
+    // foundTasks.forEach((task) => {
+    //   tasksToUpdate.push({
+    //     taskId: task._id,
+    //     categories: task.categories.map((elem) => {
+    //       if (elem._id === categoryId) {
+    //         return {
+    //           _id: categoryId,
+    //           title: req.body.title ? req.body.title : category.title,
+    //           color: req.body.color ? req.body.color : category.color,
+    //         };
+    //       } else {
+    //         return elem;
+    //       }
+    //     }),
+    //   });
+    // });
 
-    tasksToUpdate.forEach(async (task) => {
-      await Task.findOneAndUpdate(
-        { _id: task.taskId },
-        {
-          categories: task.categories,
-        }
-      );
-    });
+    // tasksToUpdate.forEach(async (task) => {
+    //   await Task.findOneAndUpdate(
+    //     { _id: task.taskId },
+    //     {
+    //       categories: task.categories,
+    //     }
+    //   );
+    // });
 
     res.json(category);
   } catch (err) {
@@ -165,7 +165,7 @@ const deleteCategory = async (req, res) => {
       return res.status(404).json({ message: "Could not find category" });
 
     const foundTasks = await Task.find({
-      categories: { $elemMatch: { _id: categoryId } },
+      categories: mongoose.Types.ObjectId(categoryId),
     });
 
     const tasksToUpdate = [];
@@ -173,7 +173,9 @@ const deleteCategory = async (req, res) => {
     foundTasks.forEach((task) => {
       tasksToUpdate.push({
         taskId: task._id,
-        categories: task.categories.filter((elem) => elem._id !== categoryId),
+        categories: task.categories.filter(
+          (elem) => elem.toString() !== categoryId
+        ),
       });
     });
 

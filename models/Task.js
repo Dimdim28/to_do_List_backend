@@ -11,10 +11,10 @@ const taskSchema = new Schema(
       type: String,
       required: true,
     },
-    categories: {
-      type: Array,
-      default: [],
-    },
+    categories: [{
+      type: Schema.Types.ObjectId,
+      ref: "category"
+    }],
     sharedWith: {
       type: Array,
       default: [],
@@ -30,6 +30,10 @@ const taskSchema = new Schema(
     dateOfCompletion: {
       type: Date,
       default: null,
+    },
+    links: {
+      type: Array,
+      default: []
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,

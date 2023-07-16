@@ -34,6 +34,7 @@ const createUser = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Incorrect data", errors: errors.array() });
+
     const foundUser = await User.findOne({ email: req.body.email });
     if (foundUser)
       return res.status(400).json({ message: "You already have account" });
@@ -72,32 +73,24 @@ const updateUser = async (req, res) => {
         .status(400)
         .json({ message: "Incorrect data", errors: errors.array() });
 
-    const { username = null, password = null, email = null } = req.body;
-
     let hashedPassword = null;
-    if (password) {
+    if (req.body.password) {
       const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(password, salt);
+      hashedPassword = await bcrypt.hash(req.body.password, salt);
     }
 
-    const newUserData = {};
-    if (hashedPassword) {
-      newUserData.password = hashedPassword;
-    }
+    const updatedUser = {
+      username: req.body.username,
+      email: req.body.email,
+    };
 
-    if (username) {
-      newUserData.username = username;
-    }
-
-    if (email) {
-      newUserData.email = email;
-    }
+    if (hashedPassword) updatedUser.password = hashedPassword;
 
     const user = await User.findOneAndUpdate(
       {
         _id: req.params.id,
       },
-      newUserData
+      updatedUser
     );
 
     if (!user)
